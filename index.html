@@ -1,0 +1,2438 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vision Hub - CV Exhibition 2026</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        glass: 'rgba(15, 23, 42, 0.75)',
+                        glassborder: 'rgba(255, 255, 255, 0.12)',
+                        neonCyan: '#00f0ff',
+                        neonPink: '#ff007f',
+                        neonEmerald: '#10b981',
+                        neonGold: '#facc15',
+                        neonCoral: '#f43f5e',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+
+    <!-- MediaPipe Vision SDKs via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+    <style>
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #030712;
+            color: #f8fafc;
+            overflow: hidden;
+            touch-action: none;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Glassmorphism Styles */
+        .glass-card {
+            background: rgba(15, 23, 42, 0.78);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 16px 36px 0 rgba(0, 0, 0, 0.55);
+        }
+
+        .glass-btn {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glass-btn:hover {
+            background: rgba(255, 255, 255, 0.14);
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .glass-btn.active {
+            background: linear-gradient(135deg, rgba(0, 240, 255, 0.25), rgba(244, 63, 94, 0.2));
+            border-color: #00f0ff;
+            box-shadow: 0 0 16px rgba(0, 240, 255, 0.4);
+            color: #ffffff;
+        }
+
+        .text-glow-cyan {
+            text-shadow: 0 0 14px rgba(0, 240, 255, 0.7);
+        }
+
+        .text-glow-gold {
+            text-shadow: 0 0 14px rgba(250, 204, 21, 0.7);
+        }
+
+        #main_canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 5;
+            display: block;
+        }
+
+        /* Camera PiP container */
+        #camera-pip {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 180px;
+            height: 135px;
+            border-radius: 20px;
+            overflow: hidden;
+            z-index: 60;
+            border: 2px solid rgba(255, 255, 255, 0.18);
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65);
+            background: #000;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        #camera-pip.minimized {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+        }
+
+        /* Level Up Flash Banner Animation */
+        @keyframes levelPop {
+            0% { transform: translate(-50%, -50%) scale(0.6); opacity: 0; }
+            40% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+            70% { transform: translate(-50%, -50%) scale(1.0); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(0.85); opacity: 0; }
+        }
+
+        .animate-level-pop {
+            animation: levelPop 1.8s forwards cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        /* Custom scrollbars */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.3); }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 9999px; }
+    </style>
+</head>
+<body class="relative w-screen h-screen select-none">
+
+    <!-- Primary Fullscreen Interactive Canvas -->
+    <canvas id="main_canvas"></canvas>
+
+    <!-- Camera Picture-in-Picture Widget -->
+    <div id="camera-pip" class="glass-card flex flex-col justify-between p-1 group">
+        <video id="input_video" class="w-full h-full object-cover rounded-2xl transform scale-x-[-1]" playsinline autoplay muted></video>
+        <button id="pip_toggle_btn" onclick="app.togglePipSize()" title="Toggle PiP Size" class="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+        </button>
+        <div id="camera_active_badge" class="absolute bottom-2 left-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/65 border border-emerald-500/40 text-[9px] text-emerald-400 font-mono">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span id="pip_status_text">ACTIVE</span>
+        </div>
+    </div>
+
+    <!-- Header Glass Navigation Dock -->
+    <header class="fixed top-0 left-0 w-full z-50 px-6 py-4 flex items-center justify-between pointer-events-none">
+        <div class="flex items-center gap-3 pointer-events-auto">
+            <button onclick="app.setMode('menu')" class="flex items-center gap-2.5 px-4 py-2 rounded-2xl glass-card hover:border-cyan-400/50 transition-all cursor-pointer group">
+                <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-rose-500 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                </div>
+                <div class="text-left">
+                    <div class="text-[10px] uppercase tracking-widest font-extrabold text-gray-400">School Exhibition</div>
+                    <div class="text-sm font-black text-white tracking-wide flex items-center gap-1">
+                        VISION<span class="text-cyan-400">HUB</span>
+                    </div>
+                </div>
+            </button>
+        </div>
+
+        <!-- 6 Main Exhibition Modules Navigation -->
+        <nav id="nav_chips" class="hidden xl:flex items-center gap-1.5 p-1.5 rounded-2xl glass-card pointer-events-auto">
+            <button onclick="app.setMode('canvas')" id="nav_canvas" class="nav-chip px-3.5 py-1.5 rounded-xl text-xs font-semibold text-gray-300 hover:text-white glass-btn flex items-center gap-1.5">
+                <span>🎨</span> AI Canvas
+            </button>
+            <button onclick="app.setMode('flappy')" id="nav_flappy" class="nav-chip px-3.5 py-1.5 rounded-xl text-xs font-semibold text-gray-300 hover:text-white glass-btn flex items-center gap-1.5">
+                <span>🐤</span> Flappy Mouth
+            </button>
+            <button onclick="app.setMode('juggler')" id="nav_juggler" class="nav-chip px-3.5 py-1.5 rounded-xl text-xs font-semibold text-gray-300 hover:text-white glass-btn flex items-center gap-1.5">
+                <span>⚽</span> Head Juggler
+            </button>
+            <button onclick="app.setMode('particles')" id="nav_particles" class="nav-chip px-3.5 py-1.5 rounded-xl text-xs font-semibold text-gray-300 hover:text-white glass-btn flex items-center gap-1.5">
+                <span>✨</span> Particle Void
+            </button>
+            <button onclick="app.setMode('grid_reflex')" id="nav_grid_reflex" class="nav-chip px-3.5 py-1.5 rounded-xl text-xs font-semibold text-gray-300 hover:text-white glass-btn flex items-center gap-1.5">
+                <span>⚡</span> Grid Reflex
+            </button>
+            <button onclick="app.setMode('neon_blade')" id="nav_neon_blade" class="nav-chip px-3.5 py-1.5 rounded-xl text-xs font-semibold text-gray-300 hover:text-white glass-btn flex items-center gap-1.5">
+                <span>🍉</span> Neon Blade
+            </button>
+        </nav>
+
+        <!-- Right Side Controls & Leaderboard Modal Trigger -->
+        <div class="flex items-center gap-3 pointer-events-auto">
+            <button onclick="app.openLeaderboardModal()" class="px-4 py-2 rounded-2xl glass-card hover:border-amber-400/50 text-xs font-bold text-amber-300 flex items-center gap-2 cursor-pointer shadow-lg hover:shadow-amber-500/20 transition-all">
+                <svg class="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+                Leaderboard
+            </button>
+            <button id="sound_toggle_btn" onclick="app.toggleSound()" class="w-10 h-10 rounded-2xl glass-card flex items-center justify-center text-gray-300 hover:text-white cursor-pointer transition-all">
+                <span id="sound_icon">🔊</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Welcome Hub / Main Exhibition Menu -->
+    <div id="welcome_screen" class="absolute inset-0 z-40 flex flex-col items-center justify-center p-6 bg-slate-950/85 backdrop-blur-2xl overflow-y-auto">
+        <div class="max-w-5xl w-full text-center my-auto py-10">
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-semibold tracking-wider uppercase mb-5 animate-pulse">
+                <span>⚡</span> School Computer Vision Exhibition 2026
+            </div>
+            <h1 class="text-4xl sm:text-6xl md:text-7xl font-black tracking-tight text-white mb-3 leading-none">
+                Neural Vision <br/>
+                <span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-fuchsia-400 to-amber-400 text-glow-cyan">
+                    Interactive Showcase
+                </span>
+            </h1>
+            <p class="text-gray-400 text-base md:text-lg font-light max-w-2xl mx-auto mb-10">
+                Step in front of the lens. Draw with index finger gestures, flap with your mouth, juggle soccer balls, and slice fruits in mid-air.
+            </p>
+
+            <!-- 6 Module Selection Cards Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 text-left">
+                <!-- 1. AI Paint Canvas -->
+                <div onclick="app.setMode('canvas')" class="glass-card p-6 rounded-3xl hover:border-cyan-400/50 hover:scale-[1.02] cursor-pointer transition-all group flex flex-col justify-between">
+                    <div>
+                        <div class="w-12 h-12 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">
+                            🎨
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-1.5 group-hover:text-cyan-400 transition-colors">AI Paint Canvas</h3>
+                        <p class="text-xs text-gray-400 leading-relaxed mb-4">
+                            Point your index finger to draw paper-smooth lines (1-Euro filter + Bézier curves). Open your palm to wipe the canvas clean instantly.
+                        </p>
+                    </div>
+                    <div class="text-[11px] font-mono text-cyan-400 font-bold flex items-center gap-1">
+                        OPEN CANVAS →
+                    </div>
+                </div>
+
+                <!-- 2. Flappy Mouth -->
+                <div onclick="app.setMode('flappy')" class="glass-card p-6 rounded-3xl hover:border-emerald-400/50 hover:scale-[1.02] cursor-pointer transition-all group flex flex-col justify-between">
+                    <div>
+                        <div class="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">
+                            🐤
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-1.5 group-hover:text-emerald-400 transition-colors">Flappy Mouth</h3>
+                        <p class="text-xs text-gray-400 leading-relaxed mb-4">
+                            Open mouth for continuous upward lift, close mouth to glide down. Parallax city skyline, green glossy pipes, scaling every 50 points.
+                        </p>
+                    </div>
+                    <div class="text-[11px] font-mono text-emerald-400 font-bold flex items-center gap-1">
+                        PLAY CHALLENGE →
+                    </div>
+                </div>
+
+                <!-- 3. Head Juggler -->
+                <div onclick="app.setMode('juggler')" class="glass-card p-6 rounded-3xl hover:border-amber-400/50 hover:scale-[1.02] cursor-pointer transition-all group flex flex-col justify-between">
+                    <div>
+                        <div class="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">
+                            ⚽
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-1.5 group-hover:text-amber-400 transition-colors">Head Juggler</h3>
+                        <p class="text-xs text-gray-400 leading-relaxed mb-4">
+                            Stadium turf with floodlights and realistic 3D ball drop shadow. Use upward head motions to keep the soccer ball airborne.
+                        </p>
+                    </div>
+                    <div class="text-[11px] font-mono text-amber-400 font-bold flex items-center gap-1">
+                        PLAY JUGGLER →
+                    </div>
+                </div>
+
+                <!-- 4. Particle Void -->
+                <div onclick="app.setMode('particles')" class="glass-card p-6 rounded-3xl hover:border-fuchsia-400/50 hover:scale-[1.02] cursor-pointer transition-all group flex flex-col justify-between">
+                    <div>
+                        <div class="w-12 h-12 rounded-2xl bg-fuchsia-500/20 text-fuchsia-400 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">
+                            ✨
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-1.5 group-hover:text-fuchsia-400 transition-colors">Particle Void</h3>
+                        <p class="text-xs text-gray-400 leading-relaxed mb-4">
+                            Pure black canvas with zero cloudy trails. 1,200+ particles with floating 3D ambient orbs, Neon Red Attract & Neon Blue Repel modes.
+                        </p>
+                    </div>
+                    <div class="text-[11px] font-mono text-fuchsia-400 font-bold flex items-center gap-1">
+                        ENTER SIMULATION →
+                    </div>
+                </div>
+
+                <!-- 5. Grid Reflex -->
+                <div onclick="app.setMode('grid_reflex')" class="glass-card p-6 rounded-3xl hover:border-cyan-400/50 hover:scale-[1.02] cursor-pointer transition-all group flex flex-col justify-between">
+                    <div>
+                        <div class="w-12 h-12 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">
+                            ⚡
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-1.5 group-hover:text-cyan-400 transition-colors">Grid Reflex</h3>
+                        <p class="text-xs text-gray-400 leading-relaxed mb-4">
+                            3x3 holographic matrix. Strictly tracks your lone index fingertip crosshair to tap contracting targets and dodge red bomb hazards.
+                        </p>
+                    </div>
+                    <div class="text-[11px] font-mono text-cyan-400 font-bold flex items-center gap-1">
+                        TEST REFLEXES →
+                    </div>
+                </div>
+
+                <!-- 6. Neon Blade (Fruit Ninja CV) -->
+                <div onclick="app.setMode('neon_blade')" class="glass-card p-6 rounded-3xl hover:border-rose-400/50 hover:scale-[1.02] cursor-pointer transition-all group flex flex-col justify-between">
+                    <div>
+                        <div class="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">
+                            🍉
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-1.5 group-hover:text-rose-400 transition-colors">Neon Blade</h3>
+                        <p class="text-xs text-gray-400 leading-relaxed mb-4">
+                            Japanese dojo wooden floor. Slice realistic watermelons, oranges, kiwis, and dragonfruits in mid-air with your glowing katana trail!
+                        </p>
+                    </div>
+                    <div class="text-[11px] font-mono text-rose-400 font-bold flex items-center gap-1">
+                        DRAW BLADE →
+                    </div>
+                </div>
+            </div>
+
+            <div id="model_loading_badge" class="mt-8 text-xs font-mono text-cyan-400 flex items-center justify-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span> Initializing Neural Vision Pipeline...
+            </div>
+        </div>
+    </div>
+
+    <!-- In-Game HUD: Score, Streak, Multiplier, and Shield/Lives -->
+    <div id="ingame_hud" class="fixed top-20 left-1/2 -translate-x-1/2 z-40 hidden flex items-center gap-4 pointer-events-none">
+        <div class="glass-card px-6 py-2.5 rounded-2xl flex items-center gap-6 shadow-2xl border border-white/10">
+            <div class="flex flex-col items-center">
+                <span class="text-[10px] uppercase font-bold tracking-widest text-gray-400">Score</span>
+                <span id="hud_score" class="text-2xl font-black text-white font-mono text-glow-cyan">0</span>
+            </div>
+            <div id="hud_streak_container" class="hidden flex flex-col items-center border-l border-white/10 pl-6">
+                <span class="text-[10px] uppercase font-bold tracking-widest text-amber-400">Streak</span>
+                <span id="hud_streak" class="text-2xl font-black text-amber-400 font-mono">x1</span>
+            </div>
+            <div id="hud_lives_container" class="hidden flex flex-col items-center border-l border-white/10 pl-6">
+                <span class="text-[10px] uppercase font-bold tracking-widest text-rose-400">Shield</span>
+                <div id="hud_lives_icons" class="text-lg">❤️❤️❤️</div>
+            </div>
+            <div id="hud_gesture_container" class="flex flex-col items-center border-l border-white/10 pl-6">
+                <span class="text-[10px] uppercase font-bold tracking-widest text-cyan-400">Action</span>
+                <span id="hud_gesture_status" class="text-xs font-bold text-gray-300 font-mono uppercase">READY</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dynamic Difficulty Up Flash Notification -->
+    <div id="difficulty_banner" class="fixed top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none hidden">
+        <div class="glass-card px-8 py-4 rounded-3xl border-2 border-amber-400/80 shadow-[0_0_50px_rgba(250,204,21,0.5)] flex flex-col items-center animate-level-pop">
+            <span class="text-3xl mb-1">⚡ SPEED UP! ⚡</span>
+            <span class="text-sm font-black tracking-widest uppercase text-amber-400 font-mono">Difficulty Calibrated (+50 Pts)</span>
+        </div>
+    </div>
+
+    <!-- AI Canvas Floating Left-Side Dock -->
+    <div id="canvas_controls" class="fixed left-6 top-1/2 -translate-y-1/2 z-40 hidden flex flex-col gap-3.5 p-3.5 rounded-3xl glass-card">
+        <div class="text-[9px] font-bold text-gray-400 text-center uppercase tracking-wider">Palette</div>
+        <div class="grid grid-cols-2 gap-2">
+            <button onclick="app.setCanvasColor('#00f0ff')" class="w-7 h-7 rounded-full bg-[#00f0ff] ring-2 ring-transparent hover:scale-110 focus:ring-white transition-all shadow-md"></button>
+            <button onclick="app.setCanvasColor('#ff007f')" class="w-7 h-7 rounded-full bg-[#ff007f] ring-2 ring-transparent hover:scale-110 focus:ring-white transition-all shadow-md"></button>
+            <button onclick="app.setCanvasColor('#facc15')" class="w-7 h-7 rounded-full bg-[#facc15] ring-2 ring-transparent hover:scale-110 focus:ring-white transition-all shadow-md"></button>
+            <button onclick="app.setCanvasColor('#10b981')" class="w-7 h-7 rounded-full bg-[#10b981] ring-2 ring-transparent hover:scale-110 focus:ring-white transition-all shadow-md"></button>
+            <button onclick="app.setCanvasColor('#f43f5e')" class="w-7 h-7 rounded-full bg-[#f43f5e] ring-2 ring-transparent hover:scale-110 focus:ring-white transition-all shadow-md"></button>
+            <button onclick="app.setCanvasColor('#ffffff')" class="w-7 h-7 rounded-full bg-[#ffffff] ring-2 ring-transparent hover:scale-110 focus:ring-white transition-all shadow-md"></button>
+        </div>
+
+        <div class="h-px bg-white/10 my-1"></div>
+        <div class="text-[9px] font-bold text-gray-400 text-center uppercase tracking-wider">Brush</div>
+        <div class="flex flex-col items-center gap-2">
+            <button onclick="app.setCanvasSize(4)" class="w-4 h-4 rounded-full bg-white/80 hover:bg-white hover:scale-125 transition-all"></button>
+            <button onclick="app.setCanvasSize(10)" class="w-6 h-6 rounded-full bg-white/80 hover:bg-white hover:scale-125 transition-all"></button>
+            <button onclick="app.setCanvasSize(22)" class="w-8 h-8 rounded-full bg-white/80 hover:bg-white hover:scale-125 transition-all"></button>
+        </div>
+
+        <div class="h-px bg-white/10 my-1"></div>
+        <button onclick="app.undoCanvas()" title="Undo Stroke" class="p-2 rounded-xl glass-btn text-gray-300 hover:text-white flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a5 5 0 015 5v2m-15-7l4-4m-4 4l4 4"></path></svg>
+        </button>
+        <button onclick="app.clearCanvasManual()" title="Clear Canvas" class="p-2 rounded-xl glass-btn text-rose-400 hover:text-rose-300 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+        </button>
+    </div>
+
+    <!-- Particle Void Floating Dock -->
+    <div id="particle_controls" class="fixed bottom-10 left-1/2 -translate-x-1/2 z-40 hidden flex items-center gap-3 p-2 rounded-full glass-card border border-white/15">
+        <button id="btn_particle_attract" onclick="app.setParticleMode('attract')" class="px-6 py-2 rounded-full text-xs font-bold transition-all bg-rose-600/70 text-white shadow-lg shadow-rose-500/40">
+            🔥 Attract (Neon Red)
+        </button>
+        <button id="btn_particle_repel" onclick="app.setParticleMode('repel')" class="px-6 py-2 rounded-full text-xs font-bold transition-all text-gray-400 hover:text-white">
+            ❄️ Repel (Neon Blue)
+        </button>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div id="game_over_modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-6 bg-black/80 backdrop-blur-xl">
+        <div class="glass-card max-w-md w-full p-8 rounded-3xl flex flex-col items-center text-center border border-white/15 shadow-[0_0_50px_rgba(0,0,0,0.8)]">
+            <div class="w-16 h-16 rounded-2xl bg-rose-500/20 text-rose-400 text-3xl flex items-center justify-center mb-4 animate-bounce">
+                💀
+            </div>
+            <h2 class="text-3xl font-black text-white mb-1">Challenge Concluded</h2>
+            <p class="text-gray-400 text-xs uppercase tracking-widest font-mono mb-6">Benchmarked Performance Recorded</p>
+
+            <div class="w-full bg-slate-900/60 border border-white/10 rounded-2xl p-4 mb-6">
+                <span class="text-xs uppercase tracking-widest text-gray-400">Final Score</span>
+                <div id="game_over_final_score" class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-rose-400 to-amber-400 font-mono mt-1">
+                    0
+                </div>
+            </div>
+
+            <div class="w-full mb-6 text-left">
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">Exhibition Pilot Tag (3 Letters)</label>
+                <input type="text" id="pilot_nickname_input" maxlength="3" placeholder="ACE" class="w-full bg-slate-950/80 border border-white/20 rounded-xl px-4 py-3 text-center text-2xl font-mono font-black tracking-widest text-white uppercase focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/30 transition-all">
+            </div>
+
+            <div class="flex gap-3 w-full">
+                <button onclick="app.submitScoreAndRestart()" class="flex-1 py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-sm tracking-wide shadow-lg shadow-cyan-500/30 transition-all cursor-pointer">
+                    Submit & Replay
+                </button>
+                <button onclick="app.setMode('menu')" class="px-5 py-3.5 rounded-xl glass-btn text-gray-300 hover:text-white font-bold text-sm transition-all cursor-pointer">
+                    Menu
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaderboard Modal -->
+    <div id="leaderboard_modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-6 bg-black/80 backdrop-blur-xl">
+        <div class="glass-card max-w-lg w-full p-6 rounded-3xl flex flex-col max-h-[85vh] border border-white/15">
+            <div class="flex items-center justify-between pb-4 border-b border-white/10">
+                <div class="flex items-center gap-2">
+                    <span class="text-2xl">🏆</span>
+                    <h3 class="text-lg font-black text-white">Exhibition Leaderboard</h3>
+                </div>
+                <button onclick="app.closeLeaderboardModal()" class="w-8 h-8 rounded-full glass-btn flex items-center justify-center text-gray-400 hover:text-white">
+                    ✕
+                </button>
+            </div>
+
+            <!-- Tab Filter for 4 Competitive Challenges -->
+            <div class="flex gap-2 py-3 overflow-x-auto">
+                <button onclick="app.switchLeaderboardTab('leaderboard_flappy')" id="lbtab_leaderboard_flappy" class="px-3.5 py-1.5 rounded-xl text-xs font-bold glass-btn whitespace-nowrap active">
+                    🐤 Flappy
+                </button>
+                <button onclick="app.switchLeaderboardTab('leaderboard_juggler')" id="lbtab_leaderboard_juggler" class="px-3.5 py-1.5 rounded-xl text-xs font-bold glass-btn whitespace-nowrap">
+                    ⚽ Juggler
+                </button>
+                <button onclick="app.switchLeaderboardTab('leaderboard_reflex')" id="lbtab_leaderboard_reflex" class="px-3.5 py-1.5 rounded-xl text-xs font-bold glass-btn whitespace-nowrap">
+                    ⚡ Reflex
+                </button>
+                <button onclick="app.switchLeaderboardTab('leaderboard_blade')" id="lbtab_leaderboard_blade" class="px-3.5 py-1.5 rounded-xl text-xs font-bold glass-btn whitespace-nowrap">
+                    🍉 Blade
+                </button>
+            </div>
+
+            <!-- Leaderboard Items Container -->
+            <div id="leaderboard_items_container" class="flex-1 overflow-y-auto space-y-2 py-2 pr-1">
+                <div class="text-center text-sm text-gray-500 py-10">Fetching rankings...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase Real-Time Synchronization -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'cv-vision-hub-2026';
+
+        let appInstance, db, auth;
+        window.lbRecords = {
+            leaderboard_flappy: [],
+            leaderboard_juggler: [],
+            leaderboard_reflex: [],
+            leaderboard_blade: []
+        };
+
+        // Fallback local memory storage for offline operation
+        const localKey = 'cv_hub_local_records';
+        try {
+            const raw = localStorage.getItem(localKey);
+            if (raw) Object.assign(window.lbRecords, JSON.parse(raw));
+        } catch(e) {}
+
+        async function initFirebase() {
+            try {
+                if (Object.keys(firebaseConfig).length > 0) {
+                    appInstance = initializeApp(firebaseConfig);
+                    db = getFirestore(appInstance);
+                    auth = getAuth(appInstance);
+
+                    const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                    if (token) await signInWithCustomToken(auth, token);
+                    else await signInAnonymously(auth);
+
+                    const boards = ['leaderboard_flappy', 'leaderboard_juggler', 'leaderboard_reflex', 'leaderboard_blade'];
+                    boards.forEach(b => {
+                        const colRef = collection(db, 'artifacts', appId, 'public', 'data', b);
+                        onSnapshot(query(colRef), (snap) => {
+                            const list = [];
+                            snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+                            list.sort((x, y) => Number(y.score || 0) - Number(x.score || 0));
+                            window.lbRecords[b] = list.slice(0, 25);
+                            if (window.app) window.app.renderLeaderboardUI();
+                        }, (err) => console.warn("Firestore listener error:", err));
+                    });
+                }
+            } catch(e) {
+                console.warn("Operating with local leaderboard storage:", e);
+            }
+        }
+
+        window.submitExhibitionScore = async function(gameKey, pilotTag, scoreVal) {
+            const entry = {
+                username: pilotTag.toUpperCase().slice(0, 3) || 'ACE',
+                score: scoreVal,
+                timestamp: Date.now()
+            };
+
+            // Update local memory
+            if (!window.lbRecords[gameKey]) window.lbRecords[gameKey] = [];
+            window.lbRecords[gameKey].push(entry);
+            window.lbRecords[gameKey].sort((a, b) => b.score - a.score);
+            try { localStorage.setItem(localKey, JSON.stringify(window.lbRecords)); } catch(e) {}
+
+            // Firestore sync if online
+            if (auth && auth.currentUser && db) {
+                try {
+                    const colRef = collection(db, 'artifacts', appId, 'public', 'data', gameKey);
+                    await addDoc(colRef, {
+                        ...entry,
+                        userId: auth.currentUser.uid
+                    });
+                } catch(e) {
+                    console.warn("Could not save score to cloud:", e);
+                }
+            }
+        };
+
+        initFirebase();
+    </script>
+
+    <script>
+        /* Procedural Web Audio Engine (No external sound files required) */
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+                this.enabled = true;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playTone(freq, type = 'sine', duration = 0.12, gainVal = 0.1) {
+                if (!this.enabled) return;
+                try {
+                    this.init();
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    gain.gain.setValueAtTime(gainVal, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch(e) {}
+            }
+
+            bladeSwoosh() {
+                if (!this.enabled) return;
+                try {
+                    this.init();
+                    const bufSize = this.ctx.sampleRate * 0.18;
+                    const buffer = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+                    const data = buffer.getChannelData(0);
+                    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+
+                    const noise = this.ctx.createBufferSource();
+                    noise.buffer = buffer;
+
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'bandpass';
+                    filter.frequency.setValueAtTime(800, this.ctx.currentTime);
+                    filter.frequency.exponentialRampToValueAtTime(3200, this.ctx.currentTime + 0.18);
+                    filter.Q.value = 3.0;
+
+                    const gain = this.ctx.createGain();
+                    gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.18);
+
+                    noise.connect(filter);
+                    filter.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    noise.start();
+                } catch(e) {}
+            }
+
+            fruitSplatter() {
+                this.playTone(340, 'triangle', 0.14, 0.2);
+                setTimeout(() => this.playTone(520, 'sine', 0.1, 0.15), 35);
+            }
+
+            headerBounce() {
+                this.playTone(190, 'sine', 0.18, 0.35);
+            }
+
+            scoreChime() {
+                this.playTone(523.25, 'triangle', 0.08, 0.15); // C5
+                setTimeout(() => this.playTone(659.25, 'triangle', 0.12, 0.15), 50); // E5
+                setTimeout(() => this.playTone(783.99, 'triangle', 0.2, 0.18), 100); // G5
+            }
+
+            strike() {
+                this.playTone(880, 'square', 0.08, 0.12);
+            }
+
+            bombDetonate() {
+                this.playTone(95, 'sawtooth', 0.45, 0.4);
+            }
+
+            clearWhoosh() {
+                this.playTone(480, 'sine', 0.28, 0.15);
+            }
+
+            difficultyAlarm() {
+                this.playTone(440, 'sine', 0.1, 0.2);
+                setTimeout(() => this.playTone(880, 'sine', 0.25, 0.25), 80);
+            }
+        }
+
+        /* Adaptive 1-Euro Filter for Jitter-Free Pointer Tracking */
+        class LowPassFilter {
+            constructor(alpha = 1) {
+                this.alpha = alpha;
+                this.s = null;
+            }
+            filter(val, alpha = this.alpha) {
+                this.alpha = alpha;
+                if (this.s === null) this.s = val;
+                else this.s = this.alpha * val + (1 - this.alpha) * this.s;
+                return this.s;
+            }
+            reset() { this.s = null; }
+        }
+
+        class OneEuroFilter {
+            constructor(freq = 60, mincutoff = 0.8, beta = 0.005, dcutoff = 1.0) {
+                this.freq = freq;
+                this.mincutoff = mincutoff;
+                this.beta = beta;
+                this.dcutoff = dcutoff;
+                this.x = new LowPassFilter();
+                this.dx = new LowPassFilter();
+                this.lastTime = null;
+            }
+
+            alpha(cutoff, rate) {
+                const tau = 1.0 / (2 * Math.PI * cutoff);
+                const te = 1.0 / rate;
+                return 1.0 / (1.0 + tau / te);
+            }
+
+            filter(val, timestamp) {
+                if (this.lastTime === null) {
+                    this.lastTime = timestamp;
+                    return this.x.filter(val);
+                }
+                const dt = Math.max(1e-4, (timestamp - this.lastTime) / 1000);
+                this.lastTime = timestamp;
+                const rate = 1.0 / dt;
+
+                const prevS = this.x.s !== null ? this.x.s : val;
+                const dval = (val - prevS) * rate;
+                const edval = this.dx.filter(dval, this.alpha(this.dcutoff, rate));
+                const cutoff = this.mincutoff + this.beta * Math.abs(edval);
+                return this.x.filter(val, this.alpha(cutoff, rate));
+            }
+
+            reset() {
+                this.x.reset();
+                this.dx.reset();
+                this.lastTime = null;
+            }
+        }
+
+        class ExhibitionApp {
+            constructor() {
+                this.canvas = document.getElementById('main_canvas');
+                this.ctx = this.canvas.getContext('2d', { alpha: false });
+                this.video = document.getElementById('input_video');
+
+                this.sound = new SoundFX();
+                this.mode = 'menu';
+                this.lastTime = performance.now();
+                this.reqId = null;
+
+                // MediaPipe landmark storage
+                this.handLandmarks = [];
+                this.faceLandmarks = null;
+                this.poseLandmarks = null;
+
+                this.camera = null;
+                this.handsModel = null;
+                this.faceModel = null;
+                this.poseModel = null;
+
+                this.activeLeaderboardTab = 'leaderboard_flappy';
+                this.state = {};
+
+                // 1-Euro filters for index finger drawing
+                this.filterX = new OneEuroFilter(60, 0.7, 0.008, 1.0);
+                this.filterY = new OneEuroFilter(60, 0.7, 0.008, 1.0);
+
+                this.resizeCanvas();
+                window.addEventListener('resize', () => this.resizeCanvas());
+            }
+
+            resizeCanvas() {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+                if (this.state.canvasOffscreen) {
+                    const temp = document.createElement('canvas');
+                    temp.width = this.state.canvasOffscreen.width;
+                    temp.height = this.state.canvasOffscreen.height;
+                    const tempCtx = temp.getContext('2d');
+                    tempCtx.drawImage(this.state.canvasOffscreen, 0, 0);
+
+                    this.state.canvasOffscreen.width = this.canvas.width;
+                    this.state.canvasOffscreen.height = this.canvas.height;
+                    this.state.cctx = this.state.canvasOffscreen.getContext('2d');
+                    this.state.cctx.drawImage(temp, 0, 0);
+                }
+            }
+
+            async initVisionModels() {
+                if (this.camera) return;
+                const statusBadge = document.getElementById('model_loading_badge');
+                if (statusBadge) statusBadge.classList.remove('hidden');
+
+                // 1. Hands (Canvas, Grid Reflex, Neon Blade, Particle Void)
+                this.handsModel = new Hands({
+                    locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+                });
+                this.handsModel.setOptions({
+                    maxNumHands: 2,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.65,
+                    minTrackingConfidence: 0.65
+                });
+                this.handsModel.onResults(res => {
+                    this.handLandmarks = res.multiHandLandmarks || [];
+                });
+
+                // 2. FaceMesh (Flappy Mouth)
+                this.faceModel = new FaceMesh({
+                    locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`
+                });
+                this.faceModel.setOptions({
+                    maxNumFaces: 1,
+                    refineLandmarks: true,
+                    minDetectionConfidence: 0.65,
+                    minTrackingConfidence: 0.65
+                });
+                this.faceModel.onResults(res => {
+                    this.faceLandmarks = res.multiFaceLandmarks?.[0] || null;
+                });
+
+                // 3. Pose (Head Juggler)
+                this.poseModel = new Pose({
+                    locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`
+                });
+                this.poseModel.setOptions({
+                    modelComplexity: 1,
+                    smoothLandmarks: true,
+                    minDetectionConfidence: 0.65,
+                    minTrackingConfidence: 0.65
+                });
+                this.poseModel.onResults(res => {
+                    this.poseLandmarks = res.poseLandmarks || null;
+                });
+
+                // Start Camera Video Feed
+                this.camera = new Camera(this.video, {
+                    onFrame: async () => {
+                        if (this.mode === 'canvas' || this.mode === 'grid_reflex' || this.mode === 'neon_blade') {
+                            await this.handsModel.send({ image: this.video });
+                        } else if (this.mode === 'flappy') {
+                            await this.faceModel.send({ image: this.video });
+                        } else if (this.mode === 'juggler') {
+                            await this.poseModel.send({ image: this.video });
+                        } else if (this.mode === 'particles') {
+                            await this.handsModel.send({ image: this.video });
+                            if (this.poseModel) await this.poseModel.send({ image: this.video });
+                        }
+                    },
+                    width: 640,
+                    height: 480
+                });
+
+                await this.camera.start();
+                if (statusBadge) statusBadge.classList.add('hidden');
+            }
+
+            async setMode(newMode) {
+                this.sound.init();
+                this.mode = newMode;
+
+                // Highlight navigation chips
+                document.querySelectorAll('.nav-chip').forEach(btn => btn.classList.remove('active'));
+                const activeNav = document.getElementById(`nav_${newMode}`);
+                if (activeNav) activeNav.classList.add('active');
+
+                const welcome = document.getElementById('welcome_screen');
+                const canvasCtrl = document.getElementById('canvas_controls');
+                const particleCtrl = document.getElementById('particle_controls');
+                const hud = document.getElementById('ingame_hud');
+                const gameOverModal = document.getElementById('game_over_modal');
+                gameOverModal.classList.add('hidden');
+
+                if (newMode === 'menu') {
+                    welcome.classList.remove('hidden');
+                    canvasCtrl.classList.add('hidden');
+                    particleCtrl.classList.add('hidden');
+                    hud.classList.add('hidden');
+                    if (this.reqId) cancelAnimationFrame(this.reqId);
+                    this.ctx.fillStyle = '#030712';
+                    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                    return;
+                } else {
+                    welcome.classList.add('hidden');
+                }
+
+                await this.initVisionModels();
+
+                // Reset HUD metrics
+                document.getElementById('hud_score').innerText = '0';
+                document.getElementById('hud_streak_container').classList.add('hidden');
+                document.getElementById('hud_lives_container').classList.add('hidden');
+                document.getElementById('hud_gesture_status').innerText = 'READY';
+
+                canvasCtrl.classList.toggle('hidden', newMode !== 'canvas');
+                particleCtrl.classList.toggle('hidden', newMode !== 'particles');
+                hud.classList.toggle('hidden', newMode === 'canvas' || newMode === 'particles');
+
+                // Initialize module states
+                if (newMode === 'canvas') this.initCanvas();
+                else if (newMode === 'flappy') this.initFlappy();
+                else if (newMode === 'juggler') this.initJuggler();
+                else if (newMode === 'particles') this.initParticles();
+                else if (newMode === 'grid_reflex') this.initGridReflex();
+                else if (newMode === 'neon_blade') this.initNeonBlade();
+
+                this.lastTime = performance.now();
+                if (this.reqId) cancelAnimationFrame(this.reqId);
+                this.loop();
+            }
+
+            showDifficultyUpBanner() {
+                const banner = document.getElementById('difficulty_banner');
+                if (!banner) return;
+                banner.classList.remove('hidden');
+                this.sound.difficultyAlarm();
+                setTimeout(() => banner.classList.add('hidden'), 1800);
+            }
+
+            initCanvas() {
+                const off = document.createElement('canvas');
+                off.width = this.canvas.width;
+                off.height = this.canvas.height;
+                const cctx = off.getContext('2d');
+                cctx.fillStyle = '#030712';
+                cctx.fillRect(0, 0, off.width, off.height);
+
+                this.filterX.reset();
+                this.filterY.reset();
+
+                this.state = {
+                    canvasOffscreen: off,
+                    cctx: cctx,
+                    color: '#00f0ff',
+                    size: 8,
+                    strokePoints: [],
+                    history: [],
+                    hasClearedOnOpenPalm: false,
+                    rippleRadius: 0,
+                    ripplePos: null
+                };
+            }
+
+            setCanvasColor(hex) { this.state.color = hex; }
+            setCanvasSize(px) { this.state.size = px; }
+
+            undoCanvas() {
+                if (this.state.history && this.state.history.length > 0) {
+                    const prev = this.state.history.pop();
+                    this.state.cctx.putImageData(prev, 0, 0);
+                    this.sound.playTone(320, 'sine', 0.1);
+                }
+            }
+
+            clearCanvasManual() {
+                if (!this.state.cctx) return;
+                this.saveCanvasSnapshot();
+                this.state.cctx.fillStyle = '#030712';
+                this.state.cctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                this.sound.clearWhoosh();
+            }
+
+            saveCanvasSnapshot() {
+                if (!this.state.history) this.state.history = [];
+                if (this.state.history.length > 12) this.state.history.shift();
+                this.state.history.push(this.state.cctx.getImageData(0, 0, this.canvas.width, this.canvas.height));
+            }
+
+            updateCanvas(timestamp) {
+                const s = this.state;
+                this.ctx.drawImage(s.canvasOffscreen, 0, 0);
+
+                // Open Palm Ripple Effect animation
+                if (s.ripplePos && s.rippleRadius > 0) {
+                    this.ctx.save();
+                    this.ctx.beginPath();
+                    this.ctx.arc(s.ripplePos.x, s.ripplePos.y, s.rippleRadius, 0, Math.PI * 2);
+                    this.ctx.strokeStyle = `rgba(0, 240, 255, ${Math.max(0, 1 - s.rippleRadius / 600)})`;
+                    this.ctx.lineWidth = 4;
+                    this.ctx.stroke();
+                    this.ctx.restore();
+                    s.rippleRadius += 35;
+                    if (s.rippleRadius > 600) s.ripplePos = null;
+                }
+
+                if (!this.handLandmarks || this.handLandmarks.length === 0) {
+                    s.strokePoints = [];
+                    this.filterX.reset();
+                    this.filterY.reset();
+                    return;
+                }
+
+                const lm = this.handLandmarks[0];
+                const rawX = (1 - lm[8].x) * this.canvas.width;
+                const rawY = lm[8].y * this.canvas.height;
+
+                // 1-Euro Filter for silky smooth, zero-jitter coordinates
+                const smoothX = this.filterX.filter(rawX, timestamp);
+                const smoothY = this.filterY.filter(rawY, timestamp);
+
+                // Precise finger extension detection relative to wrist (landmark 0)
+                const distToWrist = (idx) => Math.hypot(lm[idx].x - lm[0].x, lm[idx].y - lm[0].y);
+                const isFingerExtended = (tip, pip) => distToWrist(tip) > distToWrist(pip) * 1.15;
+
+                const indexExt = isFingerExtended(8, 6);
+                const middleExt = isFingerExtended(12, 10);
+                const ringExt = isFingerExtended(16, 14);
+                const pinkyExt = isFingerExtended(20, 18);
+                const thumbExt = distToWrist(4) > distToWrist(2) * 1.1;
+
+                // GESTURE 1: OPEN PALM = Clear Board
+                const isOpenPalm = indexExt && middleExt && ringExt && pinkyExt && thumbExt;
+                // GESTURE 2: LONE INDEX FINGER = Draw
+                const isDrawing = indexExt && !middleExt && !ringExt && !pinkyExt;
+
+                if (isOpenPalm) {
+                    if (!s.hasClearedOnOpenPalm) {
+                        this.saveCanvasSnapshot();
+                        s.cctx.fillStyle = '#030712';
+                        s.cctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                        s.hasClearedOnOpenPalm = true;
+                        s.ripplePos = { x: smoothX, y: smoothY };
+                        s.rippleRadius = 10;
+                        this.sound.clearWhoosh();
+                    }
+                    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+                    this.ctx.font = 'bold 18px Inter';
+                    this.ctx.fillText("✋ Palm Cleared Board", smoothX + 25, smoothY);
+                    s.strokePoints = [];
+                    return;
+                } else {
+                    s.hasClearedOnOpenPalm = false;
+                }
+
+                if (isDrawing) {
+                    // Add point to stroke buffer
+                    if (s.strokePoints.length === 0) {
+                        this.saveCanvasSnapshot();
+                        s.strokePoints.push({ x: smoothX, y: smoothY });
+                    }
+                    s.strokePoints.push({ x: smoothX, y: smoothY });
+
+                    // Quadratic Bézier curve through midpoints for calligraphic fluid strokes
+                    if (s.strokePoints.length >= 3) {
+                        const pts = s.strokePoints;
+                        const p0 = pts[pts.length - 3];
+                        const p1 = pts[pts.length - 2];
+                        const p2 = pts[pts.length - 1];
+
+                        const mid1 = { x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2 };
+                        const mid2 = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+
+                        s.cctx.save();
+                        s.cctx.beginPath();
+                        s.cctx.moveTo(mid1.x, mid1.y);
+                        s.cctx.quadraticCurveTo(p1.x, p1.y, mid2.x, mid2.y);
+                        s.cctx.strokeStyle = s.color;
+                        s.cctx.lineWidth = s.size;
+                        s.cctx.lineCap = 'round';
+                        s.cctx.lineJoin = 'round';
+                        s.cctx.shadowBlur = s.size * 0.7;
+                        s.cctx.shadowColor = s.color;
+                        s.cctx.stroke();
+                        s.cctx.restore();
+                    }
+
+                    // Render active pen tip
+                    this.ctx.save();
+                    this.ctx.beginPath();
+                    this.ctx.arc(smoothX, smoothY, s.size * 1.4, 0, Math.PI * 2);
+                    this.ctx.fillStyle = s.color;
+                    this.ctx.shadowBlur = 12;
+                    this.ctx.shadowColor = s.color;
+                    this.ctx.fill();
+                    this.ctx.restore();
+                } else {
+                    // GESTURE 3: Pen lifted / Hovering reticle
+                    s.strokePoints = [];
+                    this.ctx.save();
+                    this.ctx.beginPath();
+                    this.ctx.arc(smoothX, smoothY, 12, 0, Math.PI * 2);
+                    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.setLineDash([4, 4]);
+                    this.ctx.stroke();
+                    this.ctx.beginPath();
+                    this.ctx.arc(smoothX, smoothY, 3, 0, Math.PI * 2);
+                    this.ctx.fillStyle = '#00f0ff';
+                    this.ctx.fill();
+                    this.ctx.restore();
+                }
+            }
+
+            initFlappy() {
+                this.state = {
+                    score: 0,
+                    level: 0,
+                    gameOver: false,
+                    bird: {
+                        x: this.canvas.width * 0.22,
+                        y: this.canvas.height * 0.5,
+                        vy: 0,
+                        radius: 20,
+                        wingAngle: 0
+                    },
+                    pipes: [],
+                    clouds: [
+                        { x: 120, y: 70, scale: 1.2, speed: 18 },
+                        { x: 550, y: 130, scale: 0.9, speed: 24 },
+                        { x: 920, y: 85, scale: 1.4, speed: 15 }
+                    ],
+                    bushes: [
+                        { x: 0, w: 260 }, { x: 300, w: 220 }, { x: 600, w: 280 }, { x: 950, w: 250 }
+                    ],
+                    bgScrollX: 0,
+                    fgScrollX: 0,
+                    pipeTimer: 0,
+                    mouthOpen: false
+                };
+            }
+
+            updateFlappy(dt) {
+                const s = this.state;
+                const w = this.canvas.width;
+                const h = this.canvas.height;
+                const groundH = 88;
+                const dtSec = dt / 1000;
+
+                // Difficulty increases strictly every 50 points
+                const currentLevel = Math.floor(s.score / 50);
+                if (currentLevel > s.level) {
+                    s.level = currentLevel;
+                    this.showDifficultyUpBanner();
+                }
+
+                const scrollSpeed = 200 + (s.level * 36);
+                const gapSize = Math.max(130, 230 - (s.level * 18));
+                const spawnInterval = Math.max(1.2, 2.2 - (s.level * 0.16));
+
+                // 1. Parallax Sky & Retro Cityscape
+                const skyGrad = this.ctx.createLinearGradient(0, 0, 0, h - groundH);
+                skyGrad.addColorStop(0, '#0c4a6e');
+                skyGrad.addColorStop(0.5, '#0284c7');
+                skyGrad.addColorStop(1, '#bae6fd');
+                this.ctx.fillStyle = skyGrad;
+                this.ctx.fillRect(0, 0, w, h);
+
+                // Fluffy clouds
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+                s.clouds.forEach(c => {
+                    c.x -= c.speed * dtSec;
+                    if (c.x < -180) c.x = w + 120;
+                    this.ctx.beginPath();
+                    this.ctx.arc(c.x, c.y, 24 * c.scale, 0, Math.PI * 2);
+                    this.ctx.arc(c.x + 22 * c.scale, c.y - 10 * c.scale, 28 * c.scale, 0, Math.PI * 2);
+                    this.ctx.arc(c.x + 48 * c.scale, c.y, 22 * c.scale, 0, Math.PI * 2);
+                    this.ctx.fill();
+                });
+
+                // Distant City Skyline
+                s.bgScrollX -= (scrollSpeed * 0.25) * dtSec;
+                if (s.bgScrollX <= -w) s.bgScrollX = 0;
+                this.ctx.fillStyle = '#075985';
+                for (let offset = 0; offset < 2; offset++) {
+                    const startX = s.bgScrollX + (offset * w);
+                    for (let x = 0; x < w; x += 55) {
+                        const bh = 110 + Math.sin(x * 47) * 60;
+                        this.ctx.fillRect(startX + x, h - groundH - bh, 50, bh);
+                    }
+                }
+
+                // Middleground Green Bushes
+                this.ctx.fillStyle = '#15803d';
+                s.bushes.forEach(b => {
+                    b.x -= (scrollSpeed * 0.6) * dtSec;
+                    if (b.x < -b.w) b.x = w + 100;
+                    this.ctx.beginPath();
+                    this.ctx.arc(b.x + b.w / 2, h - groundH + 10, b.w / 2.2, Math.PI, 0, false);
+                    this.ctx.fill();
+                });
+
+                // Diagonally Striped Conveyor Ground
+                s.fgScrollX -= scrollSpeed * dtSec;
+                if (s.fgScrollX <= -w) s.fgScrollX = 0;
+                this.ctx.fillStyle = '#d97706';
+                this.ctx.fillRect(0, h - groundH, w, groundH);
+                this.ctx.fillStyle = '#22c55e';
+                this.ctx.fillRect(0, h - groundH, w, 14);
+
+                this.ctx.fillStyle = '#b45309';
+                for (let offset = 0; offset < 2; offset++) {
+                    const gx = s.fgScrollX + (offset * w);
+                    for (let x = 0; x < w; x += 32) {
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(gx + x, h - groundH + 14);
+                        this.ctx.lineTo(gx + x + 16, h - groundH + 14);
+                        this.ctx.lineTo(gx + x, h);
+                        this.ctx.lineTo(gx + x - 16, h);
+                        this.ctx.fill();
+                    }
+                }
+
+                if (s.gameOver) return;
+
+                // 2. Continuous Lift on Mouth Opening
+                s.mouthOpen = false;
+                if (this.faceLandmarks) {
+                    const topLip = this.faceLandmarks[13];
+                    const bottomLip = this.faceLandmarks[14];
+                    const mouthDist = Math.abs(bottomLip.y - topLip.y);
+                    if (mouthDist > 0.040) s.mouthOpen = true;
+                }
+
+                document.getElementById('hud_gesture_status').innerText = s.mouthOpen ? 'MOUTH OPEN' : 'MOUTH CLOSED';
+
+                const continuousLift = -720;
+                const continuousGravity = 580;
+
+                if (s.mouthOpen) s.bird.vy += continuousLift * dtSec;
+                else s.bird.vy += continuousGravity * dtSec;
+
+                s.bird.vy = Math.max(-380, Math.min(380, s.bird.vy));
+                s.bird.y += s.bird.vy * dtSec;
+                s.bird.wingAngle += s.mouthOpen ? 18 * dtSec : 6 * dtSec;
+
+                // 3. Pipes Spawn & Collision
+                s.pipeTimer += dtSec;
+                if (s.pipeTimer >= spawnInterval) {
+                    s.pipeTimer = 0;
+                    const minH = 75;
+                    const maxH = h - groundH - gapSize - minH;
+                    const topH = Math.random() * (maxH - minH) + minH;
+                    s.pipes.push({
+                        x: w,
+                        topHeight: topH,
+                        gap: gapSize,
+                        width: 78,
+                        passed: false
+                    });
+                }
+
+                for (let i = s.pipes.length - 1; i >= 0; i--) {
+                    const p = s.pipes[i];
+                    p.x -= scrollSpeed * dtSec;
+
+                    // 3D Glossy Green Pipe Shader
+                    const renderPipe = (px, py, pw, ph, isCapBottom) => {
+                        const pGrad = this.ctx.createLinearGradient(px, 0, px + pw, 0);
+                        pGrad.addColorStop(0, '#15803d');
+                        pGrad.addColorStop(0.3, '#4ade80');
+                        pGrad.addColorStop(0.65, '#22c55e');
+                        pGrad.addColorStop(1, '#14532d');
+                        this.ctx.fillStyle = pGrad;
+                        this.ctx.fillRect(px, py, pw, ph);
+                        this.ctx.strokeStyle = '#052e16';
+                        this.ctx.lineWidth = 3;
+                        this.ctx.strokeRect(px, py, pw, ph);
+
+                        // Collar
+                        const capH = 26;
+                        const capY = isCapBottom ? py + ph - capH : py;
+                        this.ctx.fillRect(px - 5, capY, pw + 10, capH);
+                        this.ctx.strokeRect(px - 5, capY, pw + 10, capH);
+                    };
+
+                    // Top pipe
+                    renderPipe(p.x, 0, p.width, p.topHeight, true);
+                    // Bottom pipe
+                    const bottomY = p.topHeight + p.gap;
+                    const bottomH = h - groundH - bottomY;
+                    renderPipe(p.x, bottomY, p.width, bottomH, false);
+
+                    // Check Bird Collision
+                    const bx = s.bird.x;
+                    const by = s.bird.y;
+                    const br = s.bird.radius;
+
+                    if (bx + br > p.x && bx - br < p.x + p.width) {
+                        if (by - br < p.topHeight || by + br > bottomY) {
+                            this.triggerGameOver(s.score, 'leaderboard_flappy');
+                            return;
+                        }
+                    }
+
+                    if (p.x + p.width < bx && !p.passed) {
+                        p.passed = true;
+                        s.score += 10;
+                        document.getElementById('hud_score').innerText = s.score;
+                        this.sound.scoreChime();
+                    }
+
+                    if (p.x < -120) s.pipes.splice(i, 1);
+                }
+
+                // Floor/Ceiling collision
+                if (s.bird.y + s.bird.radius >= h - groundH || s.bird.y - s.bird.radius <= 0) {
+                    this.triggerGameOver(s.score, 'leaderboard_flappy');
+                    return;
+                }
+
+                // 4. Render Authentic Flappy Bird Character
+                this.ctx.save();
+                this.ctx.translate(s.bird.x, s.bird.y);
+                this.ctx.rotate((s.bird.vy / 380) * 0.55);
+
+                // Body
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, s.bird.radius, 0, Math.PI * 2);
+                this.ctx.fillStyle = '#facc15';
+                this.ctx.fill();
+                this.ctx.strokeStyle = '#a16207';
+                this.ctx.lineWidth = 2.5;
+                this.ctx.stroke();
+
+                // Wing
+                this.ctx.fillStyle = '#fef08a';
+                this.ctx.beginPath();
+                const wingOffset = Math.sin(s.bird.wingAngle) * 6;
+                this.ctx.ellipse(-4, wingOffset, 11, 7, -0.2, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.stroke();
+
+                // Eye
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.beginPath();
+                this.ctx.arc(8, -6, 6.5, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.fillStyle = '#000000';
+                this.ctx.beginPath();
+                this.ctx.arc(10, -6, 2.5, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Beak
+                this.ctx.fillStyle = '#ea580c';
+                this.ctx.beginPath();
+                if (s.mouthOpen) {
+                    this.ctx.moveTo(14, -4);
+                    this.ctx.lineTo(26, -7);
+                    this.ctx.lineTo(19, 1);
+                    this.ctx.lineTo(26, 9);
+                    this.ctx.lineTo(14, 6);
+                } else {
+                    this.ctx.moveTo(14, -3);
+                    this.ctx.lineTo(25, 1);
+                    this.ctx.lineTo(14, 5);
+                }
+                this.ctx.closePath();
+                this.ctx.fill();
+                this.ctx.stroke();
+
+                this.ctx.restore();
+            }
+
+            initJuggler() {
+                this.state = {
+                    score: 0,
+                    level: 0,
+                    gameOver: false,
+                    ball: {
+                        x: this.canvas.width / 2,
+                        y: 110,
+                        vx: 1.2,
+                        vy: 0,
+                        radius: 35,
+                        spin: 0
+                    },
+                    baseGravity: 0.26,
+                    smoothHeadX: this.canvas.width / 2,
+                    smoothHeadY: this.canvas.height * 0.75,
+                    prevHeadY: this.canvas.height * 0.75,
+                    headVy: 0,
+                    headRadius: 65,
+                    particles: []
+                };
+            }
+
+            updateJuggler() {
+                const s = this.state;
+                const w = this.canvas.width;
+                const h = this.canvas.height;
+
+                // Difficulty rises strictly every 50 points
+                const currentLevel = Math.floor(s.score / 50);
+                if (currentLevel > s.level) {
+                    s.level = currentLevel;
+                    this.showDifficultyUpBanner();
+                }
+
+                // 1. Manicured Top-Down Football Pitch
+                const stripeHeight = 72;
+                for (let y = 0; y < h; y += stripeHeight) {
+                    this.ctx.fillStyle = (Math.floor(y / stripeHeight) % 2 === 0) ? '#15803d' : '#166534';
+                    this.ctx.fillRect(0, y, w, stripeHeight);
+                }
+
+                // Pitch Line Markings
+                this.ctx.save();
+                this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+                this.ctx.lineWidth = 4;
+                this.ctx.shadowBlur = 10;
+                this.ctx.shadowColor = 'rgba(255, 255, 255, 0.4)';
+
+                this.ctx.beginPath();
+                this.ctx.moveTo(0, h / 2);
+                this.ctx.lineTo(w, h / 2);
+                this.ctx.stroke();
+
+                this.ctx.beginPath();
+                this.ctx.arc(w / 2, h / 2, 115, 0, Math.PI * 2);
+                this.ctx.stroke();
+
+                this.ctx.strokeRect(w / 2 - 210, -10, 420, 160);
+                this.ctx.strokeRect(w / 2 - 210, h - 150, 420, 160);
+                this.ctx.restore();
+
+                // Stadium Floodlight Vignette
+                const vignette = this.ctx.createRadialGradient(w / 2, h / 2, h * 0.35, w / 2, h / 2, h * 0.95);
+                vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+                vignette.addColorStop(1, 'rgba(0, 0, 0, 0.7)');
+                this.ctx.fillStyle = vignette;
+                this.ctx.fillRect(0, 0, w, h);
+
+                if (s.gameOver) return;
+
+                // 2. Track Forehead & Upward Velocity from Pose (Nose landmark 0)
+                if (this.poseLandmarks) {
+                    const nose = this.poseLandmarks[0];
+                    const rawX = (1 - nose.x) * w;
+                    const rawY = nose.y * h;
+
+                    s.headVy = rawY - s.prevHeadY;
+                    s.prevHeadY = rawY;
+
+                    s.smoothHeadX += (rawX - s.smoothHeadX) * 0.45;
+                    s.smoothHeadY += (rawY - s.smoothHeadY) * 0.45;
+                }
+
+                // Draw Head Reticle
+                this.ctx.save();
+                this.ctx.beginPath();
+                this.ctx.arc(s.smoothHeadX, s.smoothHeadY, s.headRadius, 0, Math.PI * 2);
+                this.ctx.strokeStyle = '#00f0ff';
+                this.ctx.lineWidth = 3;
+                this.ctx.setLineDash([8, 6]);
+                this.ctx.stroke();
+                this.ctx.fillStyle = 'rgba(0, 240, 255, 0.08)';
+                this.ctx.fill();
+                this.ctx.restore();
+
+                // 3. Ball Physics & Heading
+                const curGravity = s.baseGravity + (s.level * 0.04);
+                s.ball.vy += curGravity;
+                s.ball.x += s.ball.vx;
+                s.ball.y += s.ball.vy;
+                s.ball.spin += s.ball.vx * 0.04;
+
+                // Lateral screen boundaries
+                if (s.ball.x - s.ball.radius < 0) {
+                    s.ball.x = s.ball.radius;
+                    s.ball.vx *= -0.85;
+                }
+                if (s.ball.x + s.ball.radius > w) {
+                    s.ball.x = w - s.ball.radius;
+                    s.ball.vx *= -0.85;
+                }
+
+                // Check Header Collision
+                const dx = s.ball.x - s.smoothHeadX;
+                const dy = s.ball.y - s.smoothHeadY;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist < s.headRadius + s.ball.radius && s.ball.vy > 0) {
+                    const bounceForce = -13.6 - (s.level * 0.45);
+                    s.ball.vy = bounceForce;
+                    s.ball.vx = (dx / s.headRadius) * 8.5;
+
+                    s.score += 5;
+                    document.getElementById('hud_score').innerText = s.score;
+                    this.sound.headerBounce();
+
+                    // Grass and spark bursts
+                    for (let i = 0; i < 20; i++) {
+                        s.particles.push({
+                            x: s.ball.x,
+                            y: s.ball.y + s.ball.radius * 0.6,
+                            vx: (Math.random() - 0.5) * 12,
+                            vy: (Math.random() - 0.5) * 8 - 4,
+                            life: 1.0,
+                            color: Math.random() > 0.4 ? '#4ade80' : '#ffffff'
+                        });
+                    }
+                }
+
+                // Ball drops below screen = Game Over
+                if (s.ball.y - s.ball.radius > h) {
+                    this.triggerGameOver(s.score, 'leaderboard_juggler');
+                    return;
+                }
+
+                // 4. Render Ball Altitude Drop Shadow
+                const shadowScale = Math.max(0.25, 1 - (s.ball.y / h));
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+                this.ctx.beginPath();
+                this.ctx.ellipse(
+                    s.ball.x,
+                    Math.min(h - 16, s.ball.y + 150 * shadowScale),
+                    s.ball.radius * 1.6 * shadowScale,
+                    14 * shadowScale,
+                    0, 0, Math.PI * 2
+                );
+                this.ctx.fill();
+
+                // 5. Render 3D Shaded Soccer Ball
+                this.ctx.save();
+                this.ctx.translate(s.ball.x, s.ball.y);
+                this.ctx.rotate(s.ball.spin);
+
+                const ballGrad = this.ctx.createRadialGradient(-10, -10, 4, 0, 0, s.ball.radius);
+                ballGrad.addColorStop(0, '#ffffff');
+                ballGrad.addColorStop(0.7, '#e2e8f0');
+                ballGrad.addColorStop(1, '#64748b');
+
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, s.ball.radius, 0, Math.PI * 2);
+                this.ctx.fillStyle = ballGrad;
+                this.ctx.fill();
+                this.ctx.strokeStyle = '#1e293b';
+                this.ctx.lineWidth = 1.5;
+                this.ctx.stroke();
+
+                // Classic Pentagon Inset
+                this.ctx.fillStyle = '#0f172a';
+                this.ctx.beginPath();
+                for (let i = 0; i < 5; i++) {
+                    const a = (i * 2 * Math.PI) / 5 - Math.PI / 2;
+                    const px = Math.cos(a) * 14;
+                    const py = Math.sin(a) * 14;
+                    if (i === 0) this.ctx.moveTo(px, py);
+                    else this.ctx.lineTo(px, py);
+                }
+                this.ctx.closePath();
+                this.ctx.fill();
+                this.ctx.restore();
+
+                // Particle simulation update
+                for (let i = s.particles.length - 1; i >= 0; i--) {
+                    const p = s.particles[i];
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.life -= 0.04;
+                    if (p.life <= 0) {
+                        s.particles.splice(i, 1);
+                        continue;
+                    }
+                    this.ctx.fillStyle = p.color;
+                    this.ctx.globalAlpha = p.life;
+                    this.ctx.beginPath();
+                    this.ctx.arc(p.x, p.y, p.life * 4, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    this.ctx.globalAlpha = 1;
+                }
+            }
+
+            initParticles() {
+                const count = 1250;
+                const pts = [];
+                for (let i = 0; i < count; i++) {
+                    pts.push({
+                        x: Math.random() * this.canvas.width,
+                        y: Math.random() * this.canvas.height,
+                        ox: Math.random() * this.canvas.width,
+                        oy: Math.random() * this.canvas.height,
+                        vx: 0,
+                        vy: 0
+                    });
+                }
+
+                // 3D Ambient Glowing Background Void Orbs
+                const orbs = [];
+                for (let i = 0; i < 22; i++) {
+                    orbs.push({
+                        x: Math.random() * this.canvas.width,
+                        y: Math.random() * this.canvas.height,
+                        z: Math.random() * 0.7 + 0.3,
+                        radius: Math.random() * 65 + 25,
+                        vx: (Math.random() - 0.5) * 0.45,
+                        vy: (Math.random() - 0.5) * 0.45,
+                        hue: Math.random() > 0.5 ? 190 : 340
+                    });
+                }
+
+                this.state = {
+                    particles: pts,
+                    ambientOrbs: orbs,
+                    mode: 'attract' // 'attract' (Neon Red) or 'repel' (Neon Blue)
+                };
+            }
+
+            setParticleMode(m) {
+                this.state.mode = m;
+                const btnA = document.getElementById('btn_particle_attract');
+                const btnR = document.getElementById('btn_particle_repel');
+                if (m === 'attract') {
+                    btnA.className = 'px-6 py-2 rounded-full text-xs font-bold transition-all bg-rose-600/70 text-white shadow-lg shadow-rose-500/40';
+                    btnR.className = 'px-6 py-2 rounded-full text-xs font-bold transition-all text-gray-400 hover:text-white';
+                } else {
+                    btnR.className = 'px-6 py-2 rounded-full text-xs font-bold transition-all bg-cyan-600/70 text-white shadow-lg shadow-cyan-500/40';
+                    btnA.className = 'px-6 py-2 rounded-full text-xs font-bold transition-all text-gray-400 hover:text-white';
+                    this.state.particles.forEach(p => {
+                        p.ox = Math.random() * this.canvas.width;
+                        p.oy = Math.random() * this.canvas.height;
+                    });
+                }
+            }
+
+            updateParticles() {
+                const s = this.state;
+                const w = this.canvas.width;
+                const h = this.canvas.height;
+
+                // STRICT: Clear to pure black canvas with zero cloudy trails
+                this.ctx.fillStyle = '#000000';
+                this.ctx.fillRect(0, 0, w, h);
+
+                // 1. Draw 3D Ambient Orbs for visual depth
+                s.ambientOrbs.forEach(orb => {
+                    orb.x += orb.vx * orb.z;
+                    orb.y += orb.vy * orb.z;
+                    if (orb.x < -100) orb.x = w + 100;
+                    if (orb.x > w + 100) orb.x = -100;
+                    if (orb.y < -100) orb.y = h + 100;
+                    if (orb.y > h + 100) orb.y = -100;
+
+                    const orbGrad = this.ctx.createRadialGradient(orb.x, orb.y, 0, orb.x, orb.y, orb.radius);
+                    const colorStr = orb.hue === 190 ? '0, 240, 255' : '244, 63, 94';
+                    orbGrad.addColorStop(0, `rgba(${colorStr}, ${0.12 * orb.z})`);
+                    orbGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                    this.ctx.fillStyle = orbGrad;
+                    this.ctx.beginPath();
+                    this.ctx.arc(orb.x, orb.y, orb.radius, 0, Math.PI * 2);
+                    this.ctx.fill();
+                });
+
+                // 2. Vision Targets Gathering
+                const targets = [];
+                if (this.handLandmarks) {
+                    this.handLandmarks.forEach(hand => {
+                        hand.forEach(lm => targets.push({ x: (1 - lm.x) * w, y: lm.y * h }));
+                    });
+                }
+                if (this.poseLandmarks && targets.length < 50) {
+                    this.poseLandmarks.forEach(lm => {
+                        if (lm.visibility > 0.5) targets.push({ x: (1 - lm.x) * w, y: lm.y * h });
+                    });
+                }
+
+                // 3. Attract Mode Distribution
+                if (s.mode === 'attract' && targets.length > 0) {
+                    const chunk = Math.floor(s.particles.length / targets.length);
+                    for (let i = 0; i < targets.length; i++) {
+                        for (let j = 0; j < chunk; j++) {
+                            const idx = i * chunk + j;
+                            if (idx < s.particles.length) {
+                                s.particles[idx].ox = targets[i].x + (Math.random() - 0.5) * 22;
+                                s.particles[idx].oy = targets[i].y + (Math.random() - 0.5) * 22;
+                            }
+                        }
+                    }
+                }
+
+                // 4. Update and Render Particles
+                const isAttract = s.mode === 'attract';
+                this.ctx.fillStyle = isAttract ? '#f43f5e' : '#00f0ff';
+
+                s.particles.forEach((p, index) => {
+                    let fx = 0, fy = 0;
+
+                    if (!isAttract && targets.length > 0) {
+                        targets.forEach(t => {
+                            const dx = p.x - t.x;
+                            const dy = p.y - t.y;
+                            const dist = Math.hypot(dx, dy);
+                            if (dist < 200) {
+                                const force = (200 - dist) * 0.18;
+                                fx += (dx / dist) * force;
+                                fy += (dy / dist) * force;
+                            }
+                        });
+                    }
+
+                    fx += (p.ox - p.x) * 0.08;
+                    fy += (p.oy - p.y) * 0.08;
+
+                    p.vx = (p.vx + fx) * 0.82;
+                    p.vy = (p.vy + fy) * 0.82;
+                    p.x += p.vx;
+                    p.y += p.vy;
+
+                    this.ctx.fillRect(p.x, p.y, 2.5, 2.5);
+
+                    // Attract Constellation Lines
+                    if (isAttract && index % 16 === 0 && targets.length > 0) {
+                        const nearest = targets[index % targets.length];
+                        if (Math.hypot(p.x - nearest.x, p.y - nearest.y) < 65) {
+                            this.ctx.strokeStyle = 'rgba(244, 63, 94, 0.25)';
+                            this.ctx.lineWidth = 1;
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(p.x, p.y);
+                            this.ctx.lineTo(nearest.x, nearest.y);
+                            this.ctx.stroke();
+                        }
+                    }
+                });
+            }
+
+            initGridReflex() {
+                this.state = {
+                    score: 0,
+                    level: 0,
+                    streak: 1,
+                    lives: 3,
+                    gameOver: false,
+                    targets: [],
+                    spawnTimer: 0,
+                    cols: 3,
+                    rows: 3,
+                    smoothedIndexX: null,
+                    smoothedIndexY: null
+                };
+                document.getElementById('hud_streak_container').classList.remove('hidden');
+                document.getElementById('hud_lives_container').classList.remove('hidden');
+                this.updateHudLives(3);
+            }
+
+            updateHudLives(count) {
+                const icons = ['💀', '❤️', '❤️❤️', '❤️❤️❤️'];
+                const el = document.getElementById('hud_lives_icons');
+                if (el) el.innerText = icons[Math.max(0, count)] || '💀';
+            }
+
+            updateGridReflex(dt) {
+                const s = this.state;
+                const w = this.canvas.width;
+                const h = this.canvas.height;
+                const dtSec = dt / 1000;
+
+                // Difficulty increases strictly every 50 points
+                const currentLevel = Math.floor(s.score / 50);
+                if (currentLevel > s.level) {
+                    s.level = currentLevel;
+                    this.showDifficultyUpBanner();
+                }
+
+                // Dark Holographic Chamber
+                this.ctx.fillStyle = '#050814';
+                this.ctx.fillRect(0, 0, w, h);
+
+                const gridW = Math.min(w * 0.75, 750);
+                const gridH = Math.min(h * 0.7, 600);
+                const startX = (w - gridW) / 2;
+                const startY = (h - gridH) / 2 + 25;
+                const cellW = gridW / s.cols;
+                const cellH = gridH / s.rows;
+
+                // 3x3 Matrix Glass Grid
+                this.ctx.strokeStyle = 'rgba(0, 240, 255, 0.18)';
+                this.ctx.lineWidth = 2;
+                for (let r = 0; r <= s.rows; r++) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(startX, startY + r * cellH);
+                    this.ctx.lineTo(startX + gridW, startY + r * cellH);
+                    this.ctx.stroke();
+                }
+                for (let c = 0; c <= s.cols; c++) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(startX + c * cellW, startY);
+                    this.ctx.lineTo(startX + c * cellW, startY + gridH);
+                    this.ctx.stroke();
+                }
+
+                if (s.gameOver) return;
+
+                // Target Spawning
+                const spawnInterval = Math.max(0.65, 1.4 - (s.level * 0.12));
+                const targetDuration = Math.max(1.1, 2.0 - (s.level * 0.14));
+
+                s.spawnTimer += dtSec;
+                if (s.spawnTimer >= spawnInterval) {
+                    s.spawnTimer = 0;
+                    const r = Math.floor(Math.random() * s.rows);
+                    const c = Math.floor(Math.random() * s.cols);
+                    const isHazard = Math.random() < Math.min(0.35, 0.15 + s.level * 0.04);
+
+                    s.targets.push({
+                        col: c,
+                        row: r,
+                        x: startX + c * cellW + cellW / 2,
+                        y: startY + r * cellH + cellH / 2,
+                        maxLife: targetDuration,
+                        life: targetDuration,
+                        isHazard: isHazard
+                    });
+                }
+
+                // STRICT: Track ONLY index fingertip landmark #8 (No palm/wrist phantom hits)
+                let pointerPos = null;
+                if (this.handLandmarks && this.handLandmarks.length > 0) {
+                    const tip = this.handLandmarks[0][8];
+                    const rawX = (1 - tip.x) * w;
+                    const rawY = tip.y * h;
+                    if (s.smoothedIndexX === null) {
+                        s.smoothedIndexX = rawX;
+                        s.smoothedIndexY = rawY;
+                    } else {
+                        s.smoothedIndexX += (rawX - s.smoothedIndexX) * 0.55;
+                        s.smoothedIndexY += (rawY - s.smoothedIndexY) * 0.55;
+                    }
+                    pointerPos = { x: s.smoothedIndexX, y: s.smoothedIndexY };
+                }
+
+                // Render Holographic Crosshair Reticle locked to index fingertip
+                if (pointerPos) {
+                    this.ctx.save();
+                    this.ctx.translate(pointerPos.x, pointerPos.y);
+
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, 22, 0, Math.PI * 2);
+                    this.ctx.strokeStyle = '#00f0ff';
+                    this.ctx.lineWidth = 2.5;
+                    this.ctx.stroke();
+
+                    // Crosshair ticks
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(-28, 0); this.ctx.lineTo(-12, 0);
+                    this.ctx.moveTo(12, 0); this.ctx.lineTo(28, 0);
+                    this.ctx.moveTo(0, -28); this.ctx.lineTo(0, -12);
+                    this.ctx.moveTo(0, 12); this.ctx.lineTo(0, 28);
+                    this.ctx.strokeStyle = '#00f0ff';
+                    this.ctx.stroke();
+
+                    this.ctx.fillStyle = '#00f0ff';
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, 3.5, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    this.ctx.restore();
+                }
+
+                // Process Targets
+                const hitRadius = Math.min(cellW, cellH) * 0.40;
+                for (let i = s.targets.length - 1; i >= 0; i--) {
+                    const t = s.targets[i];
+                    t.life -= dtSec;
+
+                    let struck = false;
+                    if (pointerPos && Math.hypot(pointerPos.x - t.x, pointerPos.y - t.y) < hitRadius) {
+                        struck = true;
+                    }
+
+                    if (struck) {
+                        if (t.isHazard) {
+                            s.lives--;
+                            s.streak = 1;
+                            this.sound.bombDetonate();
+                            this.updateHudLives(s.lives);
+                            if (s.lives <= 0) {
+                                this.triggerGameOver(s.score, 'leaderboard_reflex');
+                                return;
+                            }
+                        } else {
+                            s.score += 10 * s.streak;
+                            s.streak = Math.min(5, s.streak + 1);
+                            this.sound.strike();
+                        }
+                        document.getElementById('hud_score').innerText = s.score;
+                        document.getElementById('hud_streak').innerText = `x${s.streak}`;
+                        s.targets.splice(i, 1);
+                        continue;
+                    }
+
+                    if (t.life <= 0) {
+                        if (!t.isHazard) {
+                            s.streak = 1;
+                            document.getElementById('hud_streak').innerText = 'x1';
+                        }
+                        s.targets.splice(i, 1);
+                        continue;
+                    }
+
+                    // Render Target Node
+                    const progress = t.life / t.maxLife;
+                    const radius = hitRadius * 0.78;
+                    this.ctx.save();
+                    this.ctx.translate(t.x, t.y);
+
+                    if (t.isHazard) {
+                        this.ctx.fillStyle = 'rgba(244, 63, 94, 0.25)';
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, radius, 0, Math.PI * 2);
+                        this.ctx.fill();
+                        this.ctx.strokeStyle = '#f43f5e';
+                        this.ctx.lineWidth = 3;
+                        this.ctx.stroke();
+
+                        this.ctx.fillStyle = '#ffffff';
+                        this.ctx.font = 'bold 24px Inter';
+                        this.ctx.textAlign = 'center';
+                        this.ctx.textBaseline = 'middle';
+                        this.ctx.fillText('💣', 0, 0);
+                    } else {
+                        this.ctx.fillStyle = 'rgba(0, 240, 255, 0.18)';
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, radius, 0, Math.PI * 2);
+                        this.ctx.fill();
+                        this.ctx.strokeStyle = '#00f0ff';
+                        this.ctx.lineWidth = 3;
+                        this.ctx.stroke();
+
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, radius * (1 - progress) + radius * 0.35, 0, Math.PI * 2);
+                        this.ctx.strokeStyle = '#facc15';
+                        this.ctx.stroke();
+                    }
+                    this.ctx.restore();
+                }
+            }
+
+            initNeonBlade() {
+                this.state = {
+                    score: 0,
+                    level: 0,
+                    lives: 3,
+                    combo: 0,
+                    gameOver: false,
+                    fruits: [],
+                    splatters: [],
+                    bladeTrail: [],
+                    spawnTimer: 0,
+                    lastBladePos: null
+                };
+                document.getElementById('hud_lives_container').classList.remove('hidden');
+                document.getElementById('hud_streak_container').classList.remove('hidden');
+                this.updateHudLives(3);
+            }
+
+            /* Draw Rich Dojo Wooden Plank Floor */
+            drawDojoWoodFloor() {
+                const w = this.canvas.width;
+                const h = this.canvas.height;
+                const plankH = 110;
+
+                for (let y = 0; y < h; y += plankH) {
+                    const grad = this.ctx.createLinearGradient(0, y, 0, y + plankH);
+                    grad.addColorStop(0, '#3e2723');
+                    grad.addColorStop(0.5, '#4e342e');
+                    grad.addColorStop(1, '#271714');
+                    this.ctx.fillStyle = grad;
+                    this.ctx.fillRect(0, y, w, plankH);
+
+                    // Plank joint line
+                    this.ctx.fillStyle = '#1c0f0d';
+                    this.ctx.fillRect(0, y + plankH - 3, w, 3);
+
+                    // Subtle wood grain fibers
+                    this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
+                    this.ctx.lineWidth = 1;
+                    for (let x = 0; x < w; x += 140) {
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(x, y + 10);
+                        this.ctx.quadraticCurveTo(x + 60, y + plankH / 2, x + 120, y + plankH - 10);
+                        this.ctx.stroke();
+                    }
+                }
+
+                // Ambient Japanese Dojo Lantern Vignette
+                const vignette = this.ctx.createRadialGradient(w / 2, h / 2, h * 0.35, w / 2, h / 2, h * 0.95);
+                vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+                vignette.addColorStop(1, 'rgba(0, 0, 0, 0.75)');
+                this.ctx.fillStyle = vignette;
+                this.ctx.fillRect(0, 0, w, h);
+            }
+
+            /* Render Detailed 3D Fruit Illustration (Not crude geometric shapes) */
+            renderRealisticFruit(fruit, ctx = this.ctx) {
+                ctx.save();
+                ctx.translate(fruit.x, fruit.y);
+                ctx.rotate(fruit.rot);
+
+                const r = fruit.radius;
+
+                if (fruit.type === 'watermelon') {
+                    // Watermelon with striped green rind and dark camouflage bands
+                    ctx.beginPath();
+                    ctx.arc(0, 0, r, 0, Math.PI * 2);
+                    const rindGrad = ctx.createRadialGradient(-r * 0.3, -r * 0.3, 5, 0, 0, r);
+                    rindGrad.addColorStop(0, '#4ade80');
+                    rindGrad.addColorStop(0.7, '#15803d');
+                    rindGrad.addColorStop(1, '#052e16');
+                    ctx.fillStyle = rindGrad;
+                    ctx.fill();
+
+                    // Wavy dark camouflage stripes
+                    ctx.strokeStyle = '#052e16';
+                    ctx.lineWidth = 6;
+                    for (let a = 0; a < Math.PI * 2; a += Math.PI / 3) {
+                        ctx.beginPath();
+                        ctx.moveTo(Math.cos(a) * (r * 0.2), Math.sin(a) * (r * 0.2));
+                        ctx.quadraticCurveTo(Math.cos(a + 0.3) * (r * 0.6), Math.sin(a + 0.3) * (r * 0.6), Math.cos(a) * (r * 0.96), Math.sin(a) * (r * 0.96));
+                        ctx.stroke();
+                    }
+                } else if (fruit.type === 'orange') {
+                    // Orange with textured peel & highlight
+                    ctx.beginPath();
+                    ctx.arc(0, 0, r, 0, Math.PI * 2);
+                    const orangeGrad = ctx.createRadialGradient(-r * 0.35, -r * 0.35, 4, 0, 0, r);
+                    orangeGrad.addColorStop(0, '#fdba74');
+                    orangeGrad.addColorStop(0.6, '#ea580c');
+                    orangeGrad.addColorStop(1, '#9a3412');
+                    ctx.fillStyle = orangeGrad;
+                    ctx.fill();
+
+                    // Peel pore stipples
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                    ctx.beginPath();
+                    ctx.arc(-r * 0.3, -r * 0.3, r * 0.15, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (fruit.type === 'kiwi') {
+                    // Fuzzy Golden-Brown Kiwi Outer Skin
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, r * 0.9, r, 0, 0, Math.PI * 2);
+                    const kiwiGrad = ctx.createRadialGradient(-r * 0.3, -r * 0.3, 4, 0, 0, r);
+                    kiwiGrad.addColorStop(0, '#a16207');
+                    kiwiGrad.addColorStop(0.7, '#713f12');
+                    kiwiGrad.addColorStop(1, '#451a03');
+                    ctx.fillStyle = kiwiGrad;
+                    ctx.fill();
+                } else if (fruit.type === 'dragonfruit') {
+                    // Vivid Magenta Dragonfruit with Green Scale Bracts
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, r * 0.88, r * 1.05, 0, 0, Math.PI * 2);
+                    const dfGrad = ctx.createRadialGradient(-r * 0.3, -r * 0.3, 5, 0, 0, r);
+                    dfGrad.addColorStop(0, '#f43f5e');
+                    dfGrad.addColorStop(0.65, '#be123c');
+                    dfGrad.addColorStop(1, '#881337');
+                    ctx.fillStyle = dfGrad;
+                    ctx.fill();
+
+                    // Leaf scales
+                    ctx.fillStyle = '#84cc16';
+                    for (let a = -Math.PI / 2; a < Math.PI * 1.5; a += Math.PI / 2.5) {
+                        ctx.beginPath();
+                        ctx.ellipse(Math.cos(a) * (r * 0.85), Math.sin(a) * (r * 0.85), 6, 14, a, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                } else if (fruit.type === 'bomb') {
+                    // Cast-Iron Bomb with Metallic Specular & Burning Fuse
+                    ctx.beginPath();
+                    ctx.arc(0, 0, r, 0, Math.PI * 2);
+                    const bombGrad = ctx.createRadialGradient(-r * 0.35, -r * 0.35, 3, 0, 0, r);
+                    bombGrad.addColorStop(0, '#64748b');
+                    bombGrad.addColorStop(0.5, '#1e293b');
+                    bombGrad.addColorStop(1, '#020617');
+                    ctx.fillStyle = bombGrad;
+                    ctx.fill();
+
+                    // Collar & Fuse
+                    ctx.fillStyle = '#475569';
+                    ctx.fillRect(-6, -r - 8, 12, 8);
+                    ctx.beginPath();
+                    ctx.moveTo(0, -r - 8);
+                    ctx.quadraticCurveTo(10, -r - 18, 16, -r - 24);
+                    ctx.strokeStyle = '#d97706';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+
+                    // Burning spark emitter
+                    ctx.fillStyle = '#facc15';
+                    ctx.beginPath();
+                    ctx.arc(16 + (Math.random() - 0.5) * 6, -r - 24 + (Math.random() - 0.5) * 6, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+
+            /* Render Realistically Sliced Half Fruit */
+            renderSlicedHalf(half, ctx = this.ctx) {
+                ctx.save();
+                ctx.translate(half.x, half.y);
+                ctx.rotate(half.rot);
+
+                const r = half.radius;
+                const side = half.side; // 1 or -1
+
+                ctx.beginPath();
+                ctx.arc(0, 0, r, side > 0 ? 0 : Math.PI, side > 0 ? Math.PI : Math.PI * 2);
+                ctx.closePath();
+
+                if (half.type === 'watermelon') {
+                    // Ruby-red pulp with black seeds
+                    ctx.fillStyle = '#dc2626';
+                    ctx.fill();
+                    ctx.strokeStyle = '#15803d';
+                    ctx.lineWidth = 4;
+                    ctx.stroke();
+
+                    // Black seeds
+                    ctx.fillStyle = '#000000';
+                    for (let i = -2; i <= 2; i++) {
+                        ctx.beginPath();
+                        ctx.ellipse(i * 12, side * 14, 2.5, 4, 0.2 * i, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                } else if (half.type === 'orange') {
+                    // Segmented Citrus Wedges
+                    ctx.fillStyle = '#f97316';
+                    ctx.fill();
+                    ctx.strokeStyle = '#ea580c';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+
+                    // Pale core
+                    ctx.fillStyle = '#ffedd5';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (half.type === 'kiwi') {
+                    // Emerald kiwi flesh, seed ring, creamy core
+                    ctx.fillStyle = '#65a30d';
+                    ctx.fill();
+                    ctx.fillStyle = '#fef08a';
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, 7, 10, 0, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Seed ring
+                    ctx.fillStyle = '#000000';
+                    for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
+                        ctx.fillRect(Math.cos(a) * 14, Math.sin(a) * 14, 2, 2);
+                    }
+                } else if (half.type === 'dragonfruit') {
+                    // White flesh with black seed specks
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.fill();
+                    ctx.strokeStyle = '#f43f5e';
+                    ctx.lineWidth = 4;
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#000000';
+                    for (let s = 0; s < 18; s++) {
+                        ctx.fillRect((Math.random() - 0.5) * r * 1.2, side * (Math.random() * r * 0.7), 2, 2);
+                    }
+                }
+                ctx.restore();
+            }
+
+            updateNeonBlade(dt) {
+                const s = this.state;
+                const w = this.canvas.width;
+                const h = this.canvas.height;
+                const dtSec = dt / 1000;
+
+                // Difficulty increases strictly every 50 points
+                const currentLevel = Math.floor(s.score / 50);
+                if (currentLevel > s.level) {
+                    s.level = currentLevel;
+                    this.showDifficultyUpBanner();
+                }
+
+                // 1. Draw Japanese Dojo Wood Floor
+                this.drawDojoWoodFloor();
+
+                // 2. Render Lingering Juice Splatters on Wood Floor
+                for (let i = s.splatters.length - 1; i >= 0; i--) {
+                    const sp = s.splatters[i];
+                    sp.life -= dtSec * 0.12;
+                    if (sp.life <= 0) {
+                        s.splatters.splice(i, 1);
+                        continue;
+                    }
+                    this.ctx.save();
+                    this.ctx.globalAlpha = sp.life;
+                    this.ctx.fillStyle = sp.color;
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(sp.x, sp.y, sp.rX, sp.rY, sp.rot, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    this.ctx.restore();
+                }
+
+                if (s.gameOver) return;
+
+                // 3. Track Hand Pointer for Glowing Katana Trail
+                let bladePos = null;
+                if (this.handLandmarks && this.handLandmarks.length > 0) {
+                    const tip = this.handLandmarks[0][8];
+                    bladePos = { x: (1 - tip.x) * w, y: tip.y * h, t: performance.now() };
+                }
+
+                if (bladePos) {
+                    s.bladeTrail.push(bladePos);
+                    if (s.bladeTrail.length > 12) s.bladeTrail.shift();
+                } else {
+                    s.bladeTrail = [];
+                }
+
+                // Draw Katana Blade Trail with trailing sparks
+                if (s.bladeTrail.length > 2) {
+                    this.ctx.save();
+                    for (let i = 1; i < s.bladeTrail.length; i++) {
+                        const p0 = s.bladeTrail[i - 1];
+                        const p1 = s.bladeTrail[i];
+                        const alpha = i / s.bladeTrail.length;
+
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(p0.x, p0.y);
+                        this.ctx.lineTo(p1.x, p1.y);
+                        this.ctx.strokeStyle = `rgba(0, 240, 255, ${alpha})`;
+                        this.ctx.lineWidth = alpha * 10;
+                        this.ctx.lineCap = 'round';
+                        this.ctx.shadowBlur = 18;
+                        this.ctx.shadowColor = '#00f0ff';
+                        this.ctx.stroke();
+
+                        // Sparks
+                        if (Math.random() > 0.4) {
+                            this.ctx.fillStyle = '#ffffff';
+                            this.ctx.fillRect(p1.x + (Math.random() - 0.5) * 14, p1.y + (Math.random() - 0.5) * 14, 3, 3);
+                        }
+                    }
+                    this.ctx.restore();
+                }
+
+                // 4. Parabolic Fruit Launching
+                const spawnInterval = Math.max(0.85, 1.8 - (s.level * 0.14));
+                s.spawnTimer += dtSec;
+                if (s.spawnTimer >= spawnInterval) {
+                    s.spawnTimer = 0;
+                    const fruitTypes = ['watermelon', 'orange', 'kiwi', 'dragonfruit'];
+                    const isBomb = Math.random() < Math.min(0.28, 0.12 + s.level * 0.03);
+                    const chosenType = isBomb ? 'bomb' : fruitTypes[Math.floor(Math.random() * fruitTypes.length)];
+
+                    s.fruits.push({
+                        type: chosenType,
+                        x: Math.random() * (w * 0.65) + (w * 0.18),
+                        y: h + 45,
+                        vx: (Math.random() - 0.5) * 260,
+                        vy: -(Math.random() * 220 + 720),
+                        radius: chosenType === 'watermelon' ? 44 : (chosenType === 'bomb' ? 36 : 38),
+                        rot: 0,
+                        vRot: (Math.random() - 0.5) * 4,
+                        sliced: false,
+                        halves: []
+                    });
+                }
+
+                // Check Blade Slicing Raycasts
+                let pPrev = s.bladeTrail.length > 1 ? s.bladeTrail[s.bladeTrail.length - 2] : null;
+                let pCurr = s.bladeTrail.length > 0 ? s.bladeTrail[s.bladeTrail.length - 1] : null;
+                let slicedThisFrame = 0;
+
+                // 5. Update Fruits Physics & Splitting
+                for (let i = s.fruits.length - 1; i >= 0; i--) {
+                    const f = s.fruits[i];
+
+                    if (!f.sliced) {
+                        f.vy += 680 * dtSec;
+                        f.x += f.vx * dtSec;
+                        f.y += f.vy * dtSec;
+                        f.rot += f.vRot * dtSec;
+
+                        // Check Blade Cut Intersect
+                        if (pPrev && pCurr) {
+                            const bladeSpeed = Math.hypot(pCurr.x - pPrev.x, pCurr.y - pPrev.y);
+                            const distToCut = Math.hypot(f.x - pCurr.x, f.y - pCurr.y);
+
+                            if (distToCut < f.radius + 15 && bladeSpeed > 18) {
+                                f.sliced = true;
+                                slicedThisFrame++;
+
+                                if (f.type === 'bomb') {
+                                    s.lives--;
+                                    this.sound.bombDetonate();
+                                    this.updateHudLives(s.lives);
+                                    s.fruits.splice(i, 1);
+                                    if (s.lives <= 0) {
+                                        this.triggerGameOver(s.score, 'leaderboard_blade');
+                                        return;
+                                    }
+                                    continue;
+                                }
+
+                                this.sound.bladeSwoosh();
+                                this.sound.fruitSplatter();
+
+                                // Spawn two spinning sliced halves
+                                f.halves = [
+                                    { x: f.x, y: f.y, vx: f.vx - 140, vy: f.vy - 60, rot: f.rot, vRot: -6, type: f.type, radius: f.radius, side: 1 },
+                                    { x: f.x, y: f.y, vx: f.vx + 140, vy: f.vy - 60, rot: f.rot, vRot: 6, type: f.type, radius: f.radius, side: -1 }
+                                ];
+
+                                // Fruit Juice Splatter Stamped onto Wood Floor
+                                const splatterColors = {
+                                    watermelon: '#dc2626',
+                                    orange: '#f97316',
+                                    kiwi: '#65a30d',
+                                    dragonfruit: '#f43f5e'
+                                };
+                                s.splatters.push({
+                                    x: f.x,
+                                    y: f.y,
+                                    rX: f.radius * (Math.random() * 0.8 + 0.8),
+                                    rY: f.radius * (Math.random() * 0.8 + 0.8),
+                                    rot: Math.random() * Math.PI,
+                                    color: splatterColors[f.type] || '#f97316',
+                                    life: 1.0
+                                });
+                            }
+                        }
+
+                        this.renderRealisticFruit(f);
+
+                        // Drop below screen
+                        if (f.y > h + 100 && f.vy > 0) {
+                            s.fruits.splice(i, 1);
+                            continue;
+                        }
+                    } else {
+                        // Sliced Halves tumbling
+                        let allOffscreen = true;
+                        f.halves.forEach(half => {
+                            half.vy += 800 * dtSec;
+                            half.x += half.vx * dtSec;
+                            half.y += half.vy * dtSec;
+                            half.rot += half.vRot * dtSec;
+                            this.renderSlicedHalf(half);
+                            if (half.y < h + 100) allOffscreen = false;
+                        });
+
+                        if (allOffscreen) {
+                            s.fruits.splice(i, 1);
+                            continue;
+                        }
+                    }
+                }
+
+                // Combo Multipliers
+                if (slicedThisFrame > 0) {
+                    s.combo += slicedThisFrame;
+                    const pts = slicedThisFrame * 10 * Math.max(1, s.combo);
+                    s.score += pts;
+                    document.getElementById('hud_score').innerText = s.score;
+                    document.getElementById('hud_streak').innerText = `x${s.combo}`;
+                } else if (!bladePos) {
+                    s.combo = 0;
+                    document.getElementById('hud_streak').innerText = 'x1';
+                }
+            }
+
+            loop(timestamp = performance.now()) {
+                const dt = timestamp - this.lastTime;
+                this.lastTime = timestamp;
+
+                if (this.mode === 'canvas') this.updateCanvas(timestamp);
+                else if (this.mode === 'flappy') this.updateFlappy(dt);
+                else if (this.mode === 'juggler') this.updateJuggler();
+                else if (this.mode === 'particles') this.updateParticles();
+                else if (this.mode === 'grid_reflex') this.updateGridReflex(dt);
+                else if (this.mode === 'neon_blade') this.updateNeonBlade(dt);
+
+                this.reqId = requestAnimationFrame((ts) => this.loop(ts));
+            }
+
+            triggerGameOver(finalScore, gameLeaderboardKey) {
+                this.state.gameOver = true;
+                this.state.activeGameKey = gameLeaderboardKey;
+                document.getElementById('game_over_final_score').innerText = finalScore;
+                document.getElementById('game_over_modal').classList.remove('hidden');
+            }
+
+            async submitScoreAndRestart() {
+                const pilotInput = document.getElementById('pilot_nickname_input');
+                const pilotTag = pilotInput.value.trim().toUpperCase().slice(0, 3) || 'ACE';
+                const finalScore = this.state.score;
+                const gameKey = this.state.activeGameKey;
+
+                if (window.submitExhibitionScore) {
+                    await window.submitExhibitionScore(gameKey, pilotTag, finalScore);
+                }
+
+                document.getElementById('game_over_modal').classList.add('hidden');
+
+                // Restart current active game
+                if (this.mode === 'flappy') this.initFlappy();
+                else if (this.mode === 'juggler') this.initJuggler();
+                else if (this.mode === 'grid_reflex') this.initGridReflex();
+                else if (this.mode === 'neon_blade') this.initNeonBlade();
+            }
+
+            openLeaderboardModal() {
+                document.getElementById('leaderboard_modal').classList.remove('hidden');
+                this.renderLeaderboardUI();
+            }
+
+            closeLeaderboardModal() {
+                document.getElementById('leaderboard_modal').classList.add('hidden');
+            }
+
+            switchLeaderboardTab(gameKey) {
+                this.activeLeaderboardTab = gameKey;
+                ['leaderboard_flappy', 'leaderboard_juggler', 'leaderboard_reflex', 'leaderboard_blade'].forEach(k => {
+                    const btn = document.getElementById(`lbtab_${k}`);
+                    if (btn) btn.classList.toggle('active', k === gameKey);
+                });
+                this.renderLeaderboardUI();
+            }
+
+            renderLeaderboardUI() {
+                const container = document.getElementById('leaderboard_items_container');
+                if (!container) return;
+
+                const records = (window.lbRecords && window.lbRecords[this.activeLeaderboardTab]) || [];
+                container.innerHTML = '';
+
+                if (records.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center text-sm text-gray-500 py-12 flex flex-col items-center">
+                            <span class="text-3xl mb-2">🎯</span>
+                            No records logged yet. Be the first to benchmark!
+                        </div>
+                    `;
+                    return;
+                }
+
+                records.forEach((rec, idx) => {
+                    const item = document.createElement('div');
+                    item.className = `flex items-center justify-between p-3.5 rounded-2xl border ${
+                        idx === 0
+                            ? 'bg-gradient-to-r from-amber-500/20 to-transparent border-amber-500/40'
+                            : 'bg-white/5 border-white/5'
+                    }`;
+
+                    let badge = `<span class="font-mono text-gray-400 font-bold w-6 text-sm">${idx + 1}.</span>`;
+                    if (idx === 0) badge = `<span class="text-xl w-6">🥇</span>`;
+                    if (idx === 1) badge = `<span class="text-xl w-6">🥈</span>`;
+                    if (idx === 2) badge = `<span class="text-xl w-6">🥉</span>`;
+
+                    item.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            ${badge}
+                            <span class="font-mono font-bold tracking-wider text-white text-base">${rec.username || 'ANON'}</span>
+                        </div>
+                        <span class="font-mono font-black text-lg ${idx === 0 ? 'text-amber-400' : 'text-cyan-400'}">${rec.score}</span>
+                    `;
+                    container.appendChild(item);
+                });
+            }
+
+            toggleSound() {
+                this.sound.enabled = !this.sound.enabled;
+                document.getElementById('sound_icon').innerText = this.sound.enabled ? '🔊' : '🔇';
+            }
+
+            togglePipSize() {
+                document.getElementById('camera-pip').classList.toggle('minimized');
+            }
+        }
+
+        window.onload = () => {
+            window.app = new ExhibitionApp();
+        };
+    </script>
+</body>
+</html>
